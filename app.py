@@ -83,8 +83,8 @@ def load_data():
 
 
 @st.cache_data
-def get_daily_series(df):
-    return df.groupby("Order Date")["Sales"].sum().asfreq("D").fillna(0)
+def get_daily_series(_df):
+    return _df.groupby("Order Date")["Sales"].sum().asfreq("D").fillna(0)
 
 
 @st.cache_data
@@ -99,8 +99,8 @@ def get_monthly_series(_df, category=None, region=None):
 
 
 @st.cache_data
-def get_weekly_series(df):
-    daily = get_daily_series(df)
+def get_weekly_series(_df):
+    daily = get_daily_series(_df)
     return daily.resample("W").sum()
 
 
@@ -116,8 +116,8 @@ def make_season_code(m):
 
 
 @st.cache_data(show_spinner=False)
-def sarima_forecast(series_values, series_index, steps):
-    series = pd.Series(series_values, index=pd.DatetimeIndex(series_index))
+def sarima_forecast(values_tuple, index_str_tuple, steps):
+    series = pd.Series(list(values_tuple), index=pd.to_datetime(list(index_str_tuple)))
 
     test_horizon = min(3, max(1, len(series) // 6))
     train_series = series.iloc[:-test_horizon]
@@ -144,8 +144,8 @@ def sarima_forecast(series_values, series_index, steps):
 
 
 @st.cache_data
-def compute_anomalies(df):
-    weekly = get_weekly_series(df)
+def compute_anomalies(_df):
+    weekly = get_weekly_series(_df)
     a_df = weekly.to_frame(name="Sales").copy()
 
     iso = IsolationForest(contamination=0.08, random_state=42)
@@ -161,10 +161,10 @@ def compute_anomalies(df):
 
 
 @st.cache_data
-def compute_clusters(df):
+def compute_clusters(_df):
     features = []
-    for sub in df["Sub-Category"].unique():
-        sub_df = df[df["Sub-Category"] == sub]
+    for sub in _df["Sub-Category"].unique():
+        sub_df = _df[_df["Sub-Category"] == sub]
         monthly = sub_df.groupby(sub_df["Order Date"].dt.to_period("M"))["Sales"].sum()
         total_sales = sub_df["Sales"].sum()
         order_value = sub_df.groupby("Order ID")["Sales"].sum().mean()
@@ -248,14 +248,14 @@ if page == "Sales Overview":
     fig = px.bar(yearly, x="Year", y="Sales", template=LIGHT_TEMPLATE,
                  color_discrete_sequence=["#7fb3d5"])
     fig.update_layout(yaxis_title="Sales ($)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
     st.markdown("### Monthly Sales Trend")
     monthly = get_monthly_series(df)
     fig2 = px.line(x=monthly.index, y=monthly.values, template=LIGHT_TEMPLATE,
                     color_discrete_sequence=["#5499c7"])
     fig2.update_layout(xaxis_title="Month", yaxis_title="Sales ($)")
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, theme=None)
 
     st.markdown("### Sales by Region and Category")
     fcol1, fcol2 = st.columns(2)
@@ -267,7 +267,7 @@ if page == "Sales Overview":
     fig3 = px.bar(grouped, x="Region", y="Sales", color="Category", barmode="group",
                   template=LIGHT_TEMPLATE, color_discrete_sequence=PALETTE)
     fig3.update_layout(yaxis_title="Sales ($)")
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True, theme=None)
 
 
 # -----------------------------------------------------------------------
@@ -292,7 +292,9 @@ elif page == "Forecast Explorer":
         series = get_monthly_series(df, region=dim_value)
 
     with st.spinner("Fitting SARIMA model..."):
-        mean_forecast, ci, mae, rmse = sarima_forecast(series.values, series.index, horizon)
+        values_tuple = tuple(float(v) for v in series.values)
+        index_str_tuple = tuple(d.strftime("%Y-%m-%d") for d in series.index)
+        mean_forecast, ci, mae, rmse = sarima_forecast(values_tuple, index_str_tuple, horizon)
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=series.index, y=series.values, name="Actual",
@@ -307,7 +309,7 @@ elif page == "Forecast Explorer":
     ))
     fig.update_layout(template=LIGHT_TEMPLATE, title=f"{dim_value} Sales Forecast",
                        xaxis_title="Month", yaxis_title="Sales ($)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
     st.markdown("### Model Accuracy")
     mcol1, mcol2 = st.columns(2)
@@ -345,7 +347,7 @@ elif page == "Anomaly Report":
                               name="Z-Score Anomaly",
                               marker=dict(color="#f39c12", size=10, symbol="diamond")))
     fig.update_layout(template=LIGHT_TEMPLATE, xaxis_title="Week", yaxis_title="Sales ($)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Isolation Forest Flags", int(a_df["iso_anomaly"].sum()))
@@ -386,7 +388,7 @@ elif page == "Product Demand Segments":
         color_discrete_map=label_colors,
     )
     fig.update_traces(textposition="top center", marker=dict(size=12))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, theme=None)
 
     st.markdown("### Sub-Categories by Demand Cluster")
     display_df = feat_df.reset_index()[
